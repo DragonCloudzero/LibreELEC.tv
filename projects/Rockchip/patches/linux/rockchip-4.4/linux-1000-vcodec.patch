@@ -1,0 +1,22 @@
+diff --git a/drivers/video/rockchip/vcodec/vcodec_service.c b/drivers/video/rockchip/vcodec/vcodec_service.c
+index 4b2eb9093d35..1f0081ade4da 100644
+--- a/drivers/video/rockchip/vcodec/vcodec_service.c
++++ b/drivers/video/rockchip/vcodec/vcodec_service.c
+@@ -1617,9 +1617,6 @@ static void try_set_reg(struct vpu_subdev_data *data)
+ 			reg_from_wait_to_run(pservice, reg);
+ 			reg_copy_to_hw(reg->data, reg);
+ 		}
+-	} else {
+-		if (pservice->hw_ops->reduce_freq)
+-			pservice->hw_ops->reduce_freq(pservice);
+ 	}
+ 
+ 	mutex_unlock(&pservice->shutdown_lock);
+@@ -2345,6 +2342,7 @@ static void vcodec_set_freq_rk3328(struct vpu_service_info *pservice,
+ 	if (curr == reg->freq)
+ 		return;
+ 
++	atomic_set(&pservice->freq_status, reg->freq);
+ 	if (pservice->dev_id == VCODEC_DEVICE_ID_RKVDEC) {
+ 		if (reg->reg[1] & 0x00800000) {
+ 			if (rkv_dec_get_fmt(reg->reg) == FMT_H264D)
