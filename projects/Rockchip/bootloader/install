@@ -30,6 +30,11 @@ case "$PKG_SOC" in
     ;;
   rk3328)
     PKG_DATAFILE="$PKG_RKBIN/rk33/rk3328_ddr_786MHz_v1.12.bin"
+    if [ -f $PROJECT_DIR/$PROJECT/bootloader/rk3328_ddr_933MHz_v1.12.bin ]; then
+      PKG_DATAFILE="$PROJECT_DIR/$PROJECT/bootloader/rk3328_ddr_933MHz_v1.12.bin"
+    elif [ -f $PROJECT_DIR/$PROJECT/bootloader/rk3328_ddr_933MHz_v1.06.bin ]; then
+      PKG_DATAFILE="$PROJECT_DIR/$PROJECT/bootloader/rk3328_ddr_933MHz_v1.06.bin"
+    fi
     PKG_LOADER="$PKG_RKBIN/rk33/rk3328_miniloader_v2.44.bin"
     PKG_BL31="$PKG_RKBIN/rk33/rk3328_bl31_v1.39.bin"
     ;;
