@@ -1,0 +1,142 @@
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+index 41ff3397e8..3edc35e4ac 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+@@ -250,8 +250,8 @@ bool CDVDVideoCodecDRMPRIME::AddData(const DemuxPacket& packet)
+   avpkt.size = packet.iSize;
+   avpkt.dts = (packet.dts == DVD_NOPTS_VALUE) ? AV_NOPTS_VALUE : static_cast<int64_t>(packet.dts / DVD_TIME_BASE * AV_TIME_BASE);
+   avpkt.pts = (packet.pts == DVD_NOPTS_VALUE) ? AV_NOPTS_VALUE : static_cast<int64_t>(packet.pts / DVD_TIME_BASE * AV_TIME_BASE);
+-  // TODO: avpkt.side_data = static_cast<AVPacketSideData*>(packet.pSideData);
+-  // TODO: avpkt.side_data_elems = packet.iSideDataElems;
++  avpkt.side_data = static_cast<AVPacketSideData*>(packet.pSideData);
++  avpkt.side_data_elems = packet.iSideDataElems;
+ 
+   int ret = avcodec_send_packet(m_pCodecContext, &avpkt);
+   if (ret == AVERROR(EAGAIN))
+diff --git a/xbmc/cores/VideoPlayer/DVDFileInfo.cpp b/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
+index 3a00bb310a..6d3fea5b71 100644
+--- a/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
++++ b/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
+@@ -216,8 +216,8 @@ bool CDVDFileInfo::ExtractThumb(const std::string &strPath,
+       if (pDemuxer->SeekTime(nSeekTo, true))
+       {
+         CDVDVideoCodec::VCReturn iDecoderState = CDVDVideoCodec::VC_NONE;
+-        VideoPicture picture = {};
+-
++        VideoPicture picture;
++        picture.Reset();
+         // num streams * 160 frames, should get a valid frame, if not abort.
+         int abort_index = pDemuxer->GetNrOfStreams() * 160;
+         do
+@@ -240,6 +240,7 @@ bool CDVDFileInfo::ExtractThumb(const std::string &strPath,
+           iDecoderState = CDVDVideoCodec::VC_NONE;
+           while (iDecoderState == CDVDVideoCodec::VC_NONE)
+           {
++            picture.Reset();
+             iDecoderState = pVideoCodec->GetPicture(&picture);
+           }
+ 
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+index b547d17cb2..b8a7797ba0 100644
+--- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+@@ -317,6 +317,7 @@ void CVideoPlayerVideo::Process()
+   int iDropDirective;
+   bool onlyPrioMsgs = false;
+ 
++  m_picture.Reset();
+   m_videoStats.Start();
+   m_droppingStats.Reset();
+   m_iDroppedFrames = 0;
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+index cb46cbb9d9..ba5c665bd1 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+@@ -35,6 +35,7 @@ CRendererDRMPRIME::CRendererDRMPRIME(std::shared_ptr<CDRMUtils> drm)
+ 
+ CRendererDRMPRIME::~CRendererDRMPRIME()
+ {
++  m_DRM->DisableVideoLayer();
+   Reset();
+ }
+ 
+diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
+index 4361faccae..cb0dd06098 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.cpp
++++ b/xbmc/windowing/gbm/DRMAtomic.cpp
+@@ -110,6 +110,7 @@ bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, cons
+   auto ret = drmModeAtomicAddProperty(req, obj->plane->plane_id, prop_id, value);
+   if (ret < 0)
+   {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - add property failed: %s", __FUNCTION__, strerror(errno));
+     return false;
+   }
+ 
+@@ -159,7 +160,7 @@ void CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered, bool video
+   if (rendered)
+   {
+     AddPlaneProperty(m_req, plane, "FB_ID", fb_id);
+-    AddPlaneProperty(m_req, plane, "CRTC_ID", m_crtc->crtc->crtc_id);
++    AddPlaneProperty(m_req, plane, "CRTC_ID", fb_id ? m_crtc->crtc->crtc_id : 0);
+     AddPlaneProperty(m_req, plane, "SRC_X", 0);
+     AddPlaneProperty(m_req, plane, "SRC_Y", 0);
+     AddPlaneProperty(m_req, plane, "SRC_W", m_mode->hdisplay << 16);
+@@ -194,6 +195,34 @@ void CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered, bool video
+   m_req = drmModeAtomicAlloc();
+ }
+ 
++void CDRMAtomic::DisableVideoLayer()
++{
++  if (m_req)
++  {
++    AddPlaneProperty(m_req, m_primary_plane, "FB_ID", 0);
++    AddPlaneProperty(m_req, m_primary_plane, "CRTC_ID", 0);
++
++    auto ret = drmModeAtomicCommit(m_fd, m_req, DRM_MODE_ATOMIC_TEST_ONLY, nullptr);
++    if (ret < 0)
++    {
++      CLog::Log(LOGERROR, "CDRMAtomic::%s - test commit failed: %s", __FUNCTION__, strerror(errno));
++    }
++    else if (ret == 0)
++    {
++      ret = drmModeAtomicCommit(m_fd, m_req, 0, nullptr);
++      if (ret < 0)
++      {
++        CLog::Log(LOGERROR, "CDRMAtomic::%s - atomic commit failed: %s", __FUNCTION__, strerror(errno));
++      }
++    }
++
++    drmModeAtomicFree(m_req);
++    m_req = drmModeAtomicAlloc();
++  }
++
++  m_need_modeset = true;
++}
++
+ void CDRMAtomic::FlipPage(struct gbm_bo *bo, bool rendered, bool videoLayer)
+ {
+   uint32_t flags = 0;
+diff --git a/xbmc/windowing/gbm/DRMAtomic.h b/xbmc/windowing/gbm/DRMAtomic.h
+index 167ae18511..5b9ed5fed8 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.h
++++ b/xbmc/windowing/gbm/DRMAtomic.h
+@@ -31,6 +31,7 @@ public:
+   virtual bool SetVideoMode(RESOLUTION_INFO res, struct gbm_bo *bo) override;
+   virtual bool InitDrm() override;
+   virtual void DestroyDrm() override;
++  virtual void DisableVideoLayer() override;
+ 
+   bool AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, const char *name, int value);
+ 
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index 83dcb743d0..cedfa8443d 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -70,6 +70,7 @@ public:
+   virtual bool SetVideoMode(RESOLUTION_INFO res, struct gbm_bo *bo) { return false; };
+   virtual bool InitDrm();
+   virtual void DestroyDrm();
++  virtual void DisableVideoLayer() {};
+ 
+   bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
+   bool SetMode(RESOLUTION_INFO res);
