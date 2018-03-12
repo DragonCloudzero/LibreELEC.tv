@@ -26,10 +26,13 @@
 
   # Additional kernel make parameters (for example to specify the u-boot loadaddress)
     KERNEL_MAKE_EXTRACMD=""
-    KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-odroidn1.dtb"
-    KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-rock960.dtb"
-    KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-rockpro64.dtb"
     KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-sapphire.dtb"
+
+    if [ "$LINUX" = "rockchip-4.4" ]; then
+      KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-odroidn1.dtb"
+      KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-rock960.dtb"
+      KERNEL_MAKE_EXTRACMD+=" rockchip/rk3399-rockpro64.dtb"
+    fi
 
   # Mali GPU family
     MALI_FAMILY="t860"
@@ -39,3 +42,8 @@
 
   # kernel serial console
     EXTRA_CMDLINE="console=uart8250,mmio32,0xff1a0000 console=tty0"
+
+    if [ "$LINUX" != "rockchip-4.4" ]; then
+      EXTRA_CMDLINE+=" BOOT_IMAGE=/$KERNEL_NAME"
+      ADDITIONAL_DRIVERS=""
+    fi

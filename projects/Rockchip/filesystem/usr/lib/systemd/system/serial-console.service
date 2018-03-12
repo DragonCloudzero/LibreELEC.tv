@@ -2,8 +2,14 @@
 Description=Debug Shell on /dev/ttyS2
 DefaultDependencies=no
 ConditionKernelCommandLine=|console=ttyS2
+ConditionKernelCommandLine=|console=uart8250,mmio32,0x10210000
+ConditionKernelCommandLine=|console=uart8250,mmio32,0x11030000
+ConditionKernelCommandLine=|console=uart8250,mmio32,0x20064000
+ConditionKernelCommandLine=|console=uart8250,mmio32,0x20068000
 ConditionKernelCommandLine=|console=uart8250,mmio32,0xff130000
+ConditionKernelCommandLine=|console=uart8250,mmio32,0xff180000
 ConditionKernelCommandLine=|console=uart8250,mmio32,0xff1a0000
+ConditionKernelCommandLine=|console=uart8250,mmio32,0xff1c0000
 ConditionKernelCommandLine=|console=uart8250,mmio32,0xff690000
 
 [Service]
