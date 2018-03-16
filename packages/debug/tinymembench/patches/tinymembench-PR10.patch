@@ -1,0 +1,39 @@
+From fe331197d4dab79c7ec809d00f0fcb17a7ccbeb3 Mon Sep 17 00:00:00 2001
+From: Cosmin Gorgovan <cosmin@linux-geek.org>
+Date: Wed, 12 Oct 2016 12:45:22 +0000
+Subject: [PATCH] Enable the AArch32 NEON implementations on AArch64 kernels
+
+AArch64 Linux lists the "fp asimd" features in /proc/cpuinfo for
+VFP & NEON enabled hardware. VFP and NEON are mandatory to run
+Linux in AArch64 (accoring to the ARMv8 manual):
+
+> All systems that support standard operating systems with rich
+  application environments provide hardware support for floating-
+  point and Advanced SIMD. It is a requirement of the ARM
+  Procedure Call Standard for AArch64.
+---
+ asm-opt.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/asm-opt.c b/asm-opt.c
+index 9da4596..223a9c5 100644
+--- a/asm-opt.c
++++ b/asm-opt.c
+@@ -278,7 +278,7 @@ static bench_info arm_v4[] =
+ 
+ bench_info *get_asm_benchmarks(void)
+ {
+-    if (check_cpu_feature("neon"))
++    if (check_cpu_feature("neon") || check_cpu_feature("asimd"))
+         return arm_neon;
+     else if (check_cpu_feature("edsp") && check_cpu_feature("vfp"))
+         return arm_v5te_vfp;
+@@ -320,7 +320,7 @@ static bench_info arm_v5te_fb[] =
+ 
+ bench_info *get_asm_framebuffer_benchmarks(void)
+ {
+-    if (check_cpu_feature("neon"))
++    if (check_cpu_feature("neon") || check_cpu_feature("asimd"))
+         return arm_neon_fb;
+     else if (check_cpu_feature("edsp") && check_cpu_feature("vfp"))
+         return arm_v5te_vfp_fb;
