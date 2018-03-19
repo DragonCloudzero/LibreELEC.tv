@@ -1,0 +1,140 @@
+diff --git a/options/options.c b/options/options.c
+index 8e940be347..e39307ee6a 100644
+--- a/options/options.c
++++ b/options/options.c
+@@ -113,6 +113,7 @@ const struct m_opt_choice_alternatives mp_hwdec_names[] = {
+     {"rpi",         HWDEC_RPI},
+     {"rpi-copy",    HWDEC_RPI_COPY},
+     {"rkmpp",       HWDEC_RKMPP},
++    {"rkvdec",      HWDEC_RKVDEC},
+     {"mediacodec",  HWDEC_MEDIACODEC},
+     {"mediacodec-copy",HWDEC_MEDIACODEC_COPY},
+     {"cuda",        HWDEC_CUDA},
+diff --git a/video/decode/vd_lavc.c b/video/decode/vd_lavc.c
+index bf610e83e4..1861a40c9e 100644
+--- a/video/decode/vd_lavc.c
++++ b/video/decode/vd_lavc.c
+@@ -153,8 +153,43 @@ static const struct vd_lavc_hwdec mp_vd_lavc_rpi_copy = {
+ 
+ static const struct vd_lavc_hwdec mp_vd_lavc_rkmpp = {
+     .type = HWDEC_RKMPP,
++    .image_format = IMGFMT_DRMPRIME,
++    .delay_queue = HWDEC_DELAY_QUEUE_COUNT,
+     .lavc_suffix = "_rkmpp",
++};
++static void rkvdec_destroy_dev(struct mp_hwdec_ctx *ctx)
++{
++    av_buffer_unref(&ctx->av_device_ref);
++    talloc_free(ctx);
++}
++static struct mp_hwdec_ctx *rkvdec_create_dev(struct mpv_global *global,
++                                                struct mp_log *plog, bool probing)
++{
++    struct mp_hwdec_ctx *ctx = talloc_ptrtype(NULL, ctx);
++    *ctx = (struct mp_hwdec_ctx) {
++        .type = HWDEC_RKVDEC,
++        .ctx = "dummy",
++        .destroy = rkvdec_destroy_dev,
++    };
++    if (av_hwdevice_ctx_create(&ctx->av_device_ref, AV_HWDEVICE_TYPE_DRM,
++                               "/dev/dri/card0", NULL, 0) < 0)
++    {
++        rkvdec_destroy_dev(ctx);
++        return NULL;
++    }
++    return ctx;
++}
++static const struct vd_lavc_hwdec mp_vd_lavc_rkvdec = {
++    .type = HWDEC_RKVDEC,
+     .image_format = IMGFMT_DRMPRIME,
++    .create_dev = rkvdec_create_dev,
++    .generic_hwaccel = true,
++    .set_hwframes = true,
++    .pixfmt_map = (const enum AVPixelFormat[][2]) {
++        {AV_PIX_FMT_YUV420P10, AV_PIX_FMT_DRM_PRIME},
++        {AV_PIX_FMT_YUV420P,   AV_PIX_FMT_DRM_PRIME},
++        {AV_PIX_FMT_NONE}
++    },
+ };
+ 
+ #if HAVE_CUDA_HWACCEL
+@@ -277,6 +312,7 @@ static const struct vd_lavc_hwdec *const hwdec_list[] = {
+ #endif
+     &mp_vd_lavc_crystalhd,
+     &mp_vd_lavc_rkmpp,
++    &mp_vd_lavc_rkvdec,
+     NULL
+ };
+ 
+diff --git a/video/hwdec.h b/video/hwdec.h
+index 81ba4794b2..1381b243b0 100644
+--- a/video/hwdec.h
++++ b/video/hwdec.h
+@@ -28,6 +28,7 @@ enum hwdec_type {
+     HWDEC_CUDA_COPY,
+     HWDEC_CRYSTALHD,
+     HWDEC_RKMPP,
++    HWDEC_RKVDEC,
+ };
+ 
+ #define HWDEC_IS_AUTO(x) ((x) == HWDEC_AUTO || (x) == HWDEC_AUTO_COPY)
+diff --git a/video/out/gpu/hwdec.c b/video/out/gpu/hwdec.c
+index 9eefe3e287..c5af0f9428 100644
+--- a/video/out/gpu/hwdec.c
++++ b/video/out/gpu/hwdec.c
+@@ -38,6 +38,7 @@ extern const struct ra_hwdec_driver ra_hwdec_cuda;
+ extern const struct ra_hwdec_driver ra_hwdec_rpi_overlay;
+ #if HAVE_DRMPRIME && HAVE_DRM
+ extern const struct ra_hwdec_driver ra_hwdec_drmprime_drm;
++extern const struct ra_hwdec_driver ra_hwdec_drmprime_drm_rkvdec;
+ #endif
+ 
+ static const struct ra_hwdec_driver *const mpgl_hwdec_drivers[] = {
+@@ -71,6 +72,7 @@ static const struct ra_hwdec_driver *const mpgl_hwdec_drivers[] = {
+ #endif
+ #if HAVE_DRMPRIME && HAVE_DRM
+     &ra_hwdec_drmprime_drm,
++    &ra_hwdec_drmprime_drm_rkvdec,
+ #endif
+ 
+     NULL
+diff --git a/video/out/opengl/context_drm_egl.c b/video/out/opengl/context_drm_egl.c
+index 606736d483..bf83be9224 100644
+--- a/video/out/opengl/context_drm_egl.c
++++ b/video/out/opengl/context_drm_egl.c
+@@ -265,7 +265,7 @@ static void drm_egl_swap_buffers(struct ra_ctx *ctx)
+ 
+     if (atomic_ctx) {
+         drm_object_set_property(atomic_ctx->request, atomic_ctx->primary_plane, "FB_ID", p->fb->id);
+-        drm_object_set_property(atomic_ctx->request, atomic_ctx->primary_plane, "CRTC_ID", atomic_ctx->crtc->id);
++        drm_object_set_property(atomic_ctx->request, atomic_ctx->primary_plane, "CRTC_ID", p->fb->id ? atomic_ctx->crtc->id : 0);
+         drm_object_set_property(atomic_ctx->request, atomic_ctx->primary_plane, "ZPOS", 1);
+ 
+         ret = drmModeAtomicCommit(p->kms->fd, atomic_ctx->request,
+diff --git a/video/out/opengl/hwdec_drmprime_drm.c b/video/out/opengl/hwdec_drmprime_drm.c
+index d942ab3d37..657c61ce35 100644
+--- a/video/out/opengl/hwdec_drmprime_drm.c
++++ b/video/out/opengl/hwdec_drmprime_drm.c
+@@ -154,7 +154,7 @@ static int overlay_frame(struct ra_hwdec *hw, struct mp_image *hw_image,
+ 
+             if (request) {
+                 drm_object_set_property(request, p->ctx->overlay_plane, "FB_ID", next_frame.fb.fb_id);
+-                drm_object_set_property(request,  p->ctx->overlay_plane, "CRTC_ID", p->ctx->crtc->id);
++                drm_object_set_property(request,  p->ctx->overlay_plane, "CRTC_ID", next_frame.fb.fb_id ? p->ctx->crtc->id : 0);
+                 drm_object_set_property(request,  p->ctx->overlay_plane, "SRC_X",   p->src.x0 << 16);
+                 drm_object_set_property(request,  p->ctx->overlay_plane, "SRC_Y",   p->src.y0 << 16);
+                 drm_object_set_property(request,  p->ctx->overlay_plane, "SRC_W",   srcw << 16);
+@@ -261,3 +261,13 @@ const struct ra_hwdec_driver ra_hwdec_drmprime_drm = {
+     .overlay_frame = overlay_frame,
+     .uninit = uninit,
+ };
++
++const struct ra_hwdec_driver ra_hwdec_drmprime_drm_rkvdec = {
++    .name = "drmprime-drm-rkvdec",
++    .api = HWDEC_RKVDEC,
++    .priv_size = sizeof(struct priv),
++    .imgfmts = {IMGFMT_DRMPRIME, 0},
++    .init = init,
++    .overlay_frame = overlay_frame,
++    .uninit = uninit,
++};

@@ -50,7 +50,7 @@ fi
 
 if [ "$PROJECT" = "Rockchip" ]; then
   PKG_DEPENDS_TARGET="$PKG_DEPENDS_TARGET rkmpp"
-  FFMPEG_RKMPP="--enable-rkmpp --enable-libdrm --enable-version3"
+  FFMPEG_RKMPP="--enable-rkmpp --enable-libdrm --enable-version3 --enable-rkvpu"
 else
   FFMPEG_RKMPP="--disable-rkmpp"
 fi
