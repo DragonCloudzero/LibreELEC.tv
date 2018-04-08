@@ -1,0 +1,507 @@
+diff --git a/vcodec_iommu_dma.c b/vcodec_iommu_dma.c
+index 23fa9f3..2554bab 100644
+--- a/vcodec_iommu_dma.c
++++ b/vcodec_iommu_dma.c
+@@ -44,8 +44,7 @@ struct vcodec_dma_buffer {
+ };
+ 
+ struct vcodec_iommu_info {
+-	struct iommu_domain *domain;
+-	bool attached;
++	struct iommu_group *group;
+ 
+ 	struct device *dev;
+ };
+@@ -122,19 +121,24 @@ dma_addr_t vcodec_dma_import_fd(struct vcodec_dma_session *session, int fd)
+ 	if (!session)
+ 		return -EINVAL;
+ 
++	dev_info(session->dev, "vcodec_dma_import_fd fd=%d\n", fd);
++
+ 	buffer = vcodec_dma_get_buffer(session, fd);
++	dev_info(session->dev, "vcodec_dma_import_fd buffer=%p\n", buffer);
+ 	if (!IS_ERR_OR_NULL(buffer)) {
+ 		kref_get(&buffer->ref);
+ 		return buffer->iova;
+ 	}
+ 
+ 	dma_buf = dma_buf_get(fd);
++	dev_info(session->dev, "vcodec_dma_import_fd dma_buf=%p\n", dma_buf);
+ 	if (IS_ERR(dma_buf)) {
+ 		ret = PTR_ERR(dma_buf);
+ 		return ret;
+ 	}
+ 
+ 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
++	dev_info(session->dev, "vcodec_dma_import_fd buffer=%p\n", buffer);
+ 	if (!buffer) {
+ 		ret = -ENOMEM;
+ 		goto err;
+@@ -146,20 +150,26 @@ dma_addr_t vcodec_dma_import_fd(struct vcodec_dma_session *session, int fd)
+ 	kref_init(&buffer->ref);
+ 
+ 	attach = dma_buf_attach(buffer->dma_buf, session->dev);
++	dev_info(session->dev, "vcodec_dma_import_fd attach=%p\n", attach);
+ 	if (IS_ERR(attach)) {
+ 		ret = PTR_ERR(attach);
+ 		goto fail_out;
+ 	}
+ 
+ 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
++	dev_info(session->dev, "vcodec_dma_import_fd sgt=%p\n", sgt);
+ 	if (IS_ERR(sgt)) {
+ 		ret = PTR_ERR(sgt);
+ 		goto fail_detach;
+ 	}
+ 
++	dev_info(session->dev, "vcodec_dma_import_fd nents=%d\n", sgt->nents);
++
+ 	buffer->iova = sg_dma_address(sgt->sgl);
+ 	buffer->size = sg_dma_len(sgt->sgl);
+ 
++	dev_info(session->dev, "vcodec_dma_import_fd iova=%llu size=%lu\n", buffer->iova, buffer->size);
++
+ 	buffer->attach = attach;
+ 	buffer->sgt = sgt;
+ 
+@@ -231,7 +241,7 @@ void vcodec_dma_destroy_session(struct vcodec_dma_session *session)
+ 
+ struct vcodec_dma_session *vcodec_dma_session_create(struct device *dev)
+ {
+-	struct vcodec_dma_session *session = NULL;
++	struct vcodec_dma_session *session;
+ 
+ 	session = kzalloc(sizeof(*session), GFP_KERNEL);
+ 	if (!session)
+@@ -248,44 +258,22 @@ struct vcodec_dma_session *vcodec_dma_session_create(struct device *dev)
+ 
+ void vcodec_iommu_detach(struct vcodec_iommu_info *info)
+ {
+-	struct device *dev = info->dev;
+-	struct iommu_domain *domain = info->domain;
+-
+-	if (!info->attached)
+-		return;
+-
+-	iommu_detach_device(domain, dev);
+-	info->attached = false;
++	dev_info(info->dev, "vcodec_iommu_detach\n");
+ }
+ 
+ int vcodec_iommu_attach(struct vcodec_iommu_info *info)
+ {
+-	struct device *dev = info->dev;
+-	struct iommu_domain *domain = info->domain;
+-	int ret;
+-
+-	if (info->attached)
+-		return 0;
++	dev_info(info->dev, "vcodec_iommu_attach\n");
+ 
+-	ret = iommu_attach_device(domain, dev);
+-	if (ret)
+-		return ret;
+-
+-	info->attached = true;
+-
+-	return ret;
++	return 0;
+ }
+ 
+ struct vcodec_iommu_info *vcodec_iommu_probe(struct device *dev)
+ {
+-	struct vcodec_iommu_info *info = NULL;
+-	int ret = 0;
++	struct vcodec_iommu_info *info;
++	int ret;
+ 
+-	dev->dma_parms = devm_kzalloc(dev, sizeof(*dev->dma_parms), GFP_KERNEL);
+-	if (!dev->dma_parms) {
+-		ret = -ENOMEM;
+-		goto err_free_parms;
+-	}
++	dev_info(dev, "vcodec_iommu_probe start\n");
+ 
+ 	info = kzalloc(sizeof(*info), GFP_KERNEL);
+ 	if (!info) {
+@@ -294,40 +282,13 @@ struct vcodec_iommu_info *vcodec_iommu_probe(struct device *dev)
+ 	}
+ 	info->dev = dev;
+ 
+-	info->domain = iommu_domain_alloc(dev->bus);
+-	if (!info->domain) {
+-		ret = -ENOMEM;
+-		goto err_free_info;
+-	}
+-
+-	ret = iommu_get_dma_cookie(info->domain);
++	ret = vcodec_iommu_attach(info);
+ 	if (ret)
+-		goto err_free_domain;
+-
+-	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
+-	if (ret)
+-		goto err_put_cookie;
+-
+-	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
+-
+-	ret = iommu_attach_device(info->domain, dev);
+-	if (ret)
+-		goto err_put_cookie;
+-
+-	/*
+-	 * You may use the arch_setup_dma_ops() instead in the future kernel
+-	 * version, but the iommu_domain_alloc() will create an unnamed domain.
+-	 */
+-	/* ??? - Myy */
+-	arch_setup_dma_ops(dev, 0x0, dev->coherent_dma_mask + 1,
+-				   info->domain->ops, true);
++		goto err_free_info;
+ 
++	dev_info(dev, "vcodec_iommu_probe end\n");
+ 	return info;
+ 
+-err_put_cookie:
+-	iommu_put_dma_cookie(info->domain);
+-err_free_domain:
+-	iommu_domain_free(info->domain);
+ err_free_info:
+ 	kfree(info);
+ err_free_parms:
+@@ -336,11 +297,9 @@ err_free_parms:
+ 
+ int vcodec_iommu_remove(struct vcodec_iommu_info *info)
+ {
+-	iommu_detach_device(info->domain, info->dev);
+-	info->attached = false;
++	dev_info(info->dev, "vcodec_iommu_remove\n");
+ 
+-	iommu_put_dma_cookie(info->domain);
+-	iommu_domain_free(info->domain);
++	vcodec_iommu_detach(info);
+ 
+ 	kfree(info);
+ 
+diff --git a/vcodec_service.c b/vcodec_service.c
+index 20129b7..779b966 100644
+--- a/vcodec_service.c
++++ b/vcodec_service.c
+@@ -324,7 +324,6 @@ struct vpu_subdev_data {
+ 	u32 reg_size;
+ 
+ 	struct work_struct set_work;
+-	struct iommu_domain *domain;
+ 	struct vcodec_iommu_info *iommu_info;
+ };
+ 
+@@ -560,7 +559,7 @@ static int vpu_get_clk(struct vpu_service_info *pservice)
+ 		pservice->pd_video = devm_clk_get(dev, "pd_hevc");
+ 		if (IS_ERR(pservice->pd_video)) {
+ 			pservice->pd_video = NULL;
+-			dev_dbg(dev, "failed on clk_get pd_hevc\n");
++			dev_info(dev, "failed on clk_get pd_hevc\n");
+ 		}
+ 	case VCODEC_DEVICE_ID_COMBO:
+ 	case VCODEC_DEVICE_ID_RKVDEC:
+@@ -595,7 +594,7 @@ static int vpu_get_clk(struct vpu_service_info *pservice)
+ 			pservice->pd_video = devm_clk_get(dev, "pd_video");
+ 			if (IS_ERR(pservice->pd_video)) {
+ 				pservice->pd_video = NULL;
+-				dev_dbg(dev, "do not have pd_video\n");
++				dev_info(dev, "do not have pd_video\n");
+ 			}
+ 		}
+ 		break;
+@@ -623,6 +622,7 @@ static void _vpu_reset(struct vpu_subdev_data *data)
+ 	pservice->reg_resev = NULL;
+ 
+ #ifdef CONFIG_RESET_CONTROLLER
++	dev_info(pservice->dev, "_vpu_reset rockchip_pmu_idle_request true\n");
+ 	rockchip_pmu_idle_request(pservice->dev, true);
+ 	rate = clk_get_rate(pservice->aclk_vcodec);
+ 	/*
+@@ -649,10 +649,13 @@ static void _vpu_reset(struct vpu_subdev_data *data)
+ 	try_reset_deassert(pservice->rst_core);
+ 	try_reset_deassert(pservice->rst_cabac);
+ 
++	dev_info(pservice->dev, "_vpu_reset rockchip_pmu_idle_request false\n");
+ 	rockchip_pmu_idle_request(pservice->dev, false);
+ 	clk_set_rate(pservice->aclk_vcodec, rate);
+ 
++	dev_info(pservice->dev, "_vpu_reset vcodec_iommu_detach\n");
+ 	vcodec_iommu_detach(data->iommu_info);
++	dev_info(pservice->dev, "_vpu_reset vcodec_iommu_attach\n");
+ 	vcodec_iommu_attach(data->iommu_info);
+ 
+ 	dev_info(pservice->dev, "reset done\n");
+@@ -663,6 +666,8 @@ static void vpu_reset(struct vpu_subdev_data *data)
+ {
+ 	struct vpu_service_info *pservice = data->pservice;
+ 
++	dev_info(pservice->dev, "vpu_reset\n");
++
+ 	mutex_lock(&pservice->reset_lock);
+ 	_vpu_reset(data);
+ 	mutex_unlock(&pservice->reset_lock);
+@@ -710,6 +715,8 @@ static void vpu_service_power_off(struct vpu_service_info *pservice)
+ 	int total_running;
+ 	int ret = atomic_add_unless(&pservice->enabled, -1, 0);
+ 
++	dev_info(pservice->dev, "vpu_service_power_off\n");
++
+ 	if (!ret)
+ 		return;
+ 
+@@ -721,10 +728,11 @@ static void vpu_service_power_off(struct vpu_service_info *pservice)
+ 		pr_alert("alert: delay 50 ms for running task\n");
+ 	}
+ 
+-	dev_dbg(pservice->dev, "power off...\n");
++	dev_info(pservice->dev, "power off...\n");
+ 
+ 	pservice->curr_mode = VCODEC_RUNNING_MODE_NONE;
+ 	pm_runtime_put(pservice->dev);
++/*
+ #if VCODEC_CLOCK_ENABLE
+ 		if (pservice->pd_video)
+ 			clk_disable_unprepare(pservice->pd_video);
+@@ -737,16 +745,18 @@ static void vpu_service_power_off(struct vpu_service_info *pservice)
+ 		if (pservice->clk_cabac)
+ 			clk_disable_unprepare(pservice->clk_cabac);
+ #endif
++*/
+ 
+ 	atomic_add(1, &pservice->power_off_cnt);
+ /*	wake_unlock(&pservice->wake_lock);*/
+-	dev_dbg(pservice->dev, "power off done\n");
++	dev_info(pservice->dev, "power off done\n");
+ }
+ 
+ static inline void vpu_queue_power_off_work(struct vpu_service_info *pservice)
+ {
+-	queue_delayed_work(system_wq, &pservice->power_off_work,
+-			   VPU_POWER_OFF_DELAY);
++	dev_info(pservice->dev, "vpu_queue_power_off_work\n");
++	//queue_delayed_work(system_wq, &pservice->power_off_work,
++	//		   VPU_POWER_OFF_DELAY);
+ }
+ 
+ static void vpu_power_off_work(struct work_struct *work_s)
+@@ -756,6 +766,8 @@ static void vpu_power_off_work(struct work_struct *work_s)
+ 	struct vpu_service_info *pservice = container_of(dlwork,
+ 			struct vpu_service_info, power_off_work);
+ 
++	dev_info(pservice->dev, "vpu_power_off_work\n");
++
+ 	if (mutex_trylock(&pservice->lock)) {
+ 		vpu_service_power_off(pservice);
+ 		mutex_unlock(&pservice->lock);
+@@ -771,6 +783,8 @@ static void vpu_service_power_on(struct vpu_subdev_data *data,
+ 	int ret;
+ 	ktime_t now = ktime_get();
+ 
++	dev_info(pservice->dev, "vpu_service_power_on\n");
++
+ 	if (ktime_to_ns(ktime_sub(now, pservice->last)) > NSEC_PER_SEC ||
+ 	    atomic_read(&pservice->power_on_cnt)) {
+ 		/* NSEC_PER_SEC */
+@@ -782,7 +796,7 @@ static void vpu_service_power_on(struct vpu_subdev_data *data,
+ 	if (!ret)
+ 		return;
+ 
+-	dev_dbg(pservice->dev, "power on\n");
++	dev_info(pservice->dev, "power on\n");
+ 
+ #define BIT_VCODEC_CLK_SEL	(1<<10)
+ 	if (of_machine_is_compatible("rockchip,rk3126"))
+@@ -790,6 +804,7 @@ static void vpu_service_power_on(struct vpu_subdev_data *data,
+ 			| BIT_VCODEC_CLK_SEL | (BIT_VCODEC_CLK_SEL << 16),
+ 			RK_GRF_VIRT + RK312X_GRF_SOC_CON1);
+ 
++/*
+ #if VCODEC_CLOCK_ENABLE
+ 	if (pservice->aclk_vcodec)
+ 		clk_prepare_enable(pservice->aclk_vcodec);
+@@ -802,8 +817,10 @@ static void vpu_service_power_on(struct vpu_subdev_data *data,
+ 	if (pservice->pd_video)
+ 		clk_prepare_enable(pservice->pd_video);
+ #endif
++*/
+ 	pm_runtime_get_sync(pservice->dev);
+ 
++
+ 	udelay(5);
+ 	atomic_add(1, &pservice->power_on_cnt);
+ //	wake_lock(&pservice->wake_lock);
+@@ -1995,7 +2012,7 @@ static int vpu_service_open(struct inode *inode, struct file *filp)
+ 	filp->private_data = (void *)session;
+ 	mutex_unlock(&pservice->lock);
+ 
+-	dev_dbg(pservice->dev, "dev opened\n");
++	dev_info(pservice->dev, "dev opened\n");
+ 	vpu_debug_leave();
+ 	return nonseekable_open(inode, filp);
+ }
+@@ -2099,8 +2116,6 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 		break;
+ 	}
+ 
+-	data->iommu_info = vcodec_iommu_probe(dev);
+-
+ 	if (!pservice->reg_base) {
+ 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 		data->regs = devm_ioremap_resource(dev, res);
+@@ -2114,31 +2129,42 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 		ioaddr = pservice->ioaddr;
+ 	}
+ 
++	dev_info(dev, "vpu_service_power_on");
+ 	vpu_service_power_on(data, pservice);
+ 
++	dev_info(dev, "vcodec_iommu_probe");
++	data->iommu_info = vcodec_iommu_probe(dev);
++
++	dev_info(dev, "vcodec_enter_mode");
+ 	vcodec_enter_mode(data);
++	dev_info(dev, "vpu_service_check_hw");
+ 	ret = vpu_service_check_hw(data);
+ 	if (ret < 0) {
+ 		dev_err(dev, "error: hw info check failed\n");
+ 		goto err;
+ 	}
++	dev_info(dev, "vcodec_exit_mode");
+ 	vcodec_exit_mode(data);
+ 
+ 	hw_info = data->hw_info;
+ 	regs = (u8 *)data->regs;
+ 
++	dev_info(dev, "dec_reg_num");
+ 	if (hw_info->dec_reg_num) {
+ 		data->dec_dev.iosize = hw_info->dec_io_size;
+ 		data->dec_dev.regs = (u32 *)(regs + hw_info->dec_offset);
+ 	}
+ 
++	dev_info(dev, "enc_reg_num");
+ 	if (hw_info->enc_reg_num) {
+ 		data->enc_dev.iosize = hw_info->enc_io_size;
+ 		data->enc_dev.regs = (u32 *)(regs + hw_info->enc_offset);
+ 	}
+ 
++	dev_info(dev, "reg_size");
+ 	data->reg_size = max(hw_info->dec_io_size, hw_info->enc_io_size);
+ 
++	dev_info(dev, "irq_enc");
+ 	data->irq_enc = platform_get_irq_byname(pdev, "irq_enc");
+ 	if (data->irq_enc > 0) {
+ 		ret = devm_request_threaded_irq(dev, data->irq_enc,
+@@ -2152,6 +2178,7 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 		}
+ 	}
+ 
++	dev_info(dev, "irq_dec");
+ 	data->irq_dec = platform_get_irq_byname(pdev, "irq_dec");
+ 	if (data->irq_dec > 0) {
+ 		ret = devm_request_threaded_irq(dev, data->irq_dec,
+@@ -2169,21 +2196,25 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 	atomic_set(&data->enc_dev.irq_count_codec, 0);
+ 	atomic_set(&data->enc_dev.irq_count_pp, 0);
+ 
++	dev_info(dev, "get_hw_info");
+ 	get_hw_info(data);
+ 	pservice->auto_freq = true;
+ 
+ 	/* create device node */
++	dev_info(dev, "alloc_chrdev_region");
+ 	ret = alloc_chrdev_region(&data->dev_t, 0, 1, name);
+ 	if (ret) {
+ 		dev_err(dev, "alloc dev_t failed\n");
+ 		goto err;
+ 	}
+ 
++	dev_info(dev, "cdev_init");
+ 	cdev_init(&data->cdev, &vpu_service_fops);
+ 
+ 	data->cdev.owner = THIS_MODULE;
+ 	data->cdev.ops = &vpu_service_fops;
+ 
++	dev_info(dev, "cdev_add");
+ 	ret = cdev_add(&data->cdev, data->dev_t, 1);
+ 
+ 	if (ret) {
+@@ -2191,6 +2222,7 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 		goto err;
+ 	}
+ 
++	dev_info(dev, "class_create");
+ 	data->cls = class_create(THIS_MODULE, name);
+ 
+ 	if (IS_ERR(data->cls)) {
+@@ -2199,17 +2231,22 @@ static int vcodec_subdev_probe(struct platform_device *pdev,
+ 		goto err;
+ 	}
+ 
++	dev_info(dev, "child_dev");
+ 	data->child_dev = device_create(data->cls, dev,
+ 		data->dev_t, NULL, "%s", name);
+ 
++	dev_info(dev, "platform_set_drvdata");
+ 	platform_set_drvdata(pdev, data);
+ 
++	dev_info(dev, "lnk_service");
+ 	INIT_LIST_HEAD(&data->lnk_service);
+ 	list_add_tail(&data->lnk_service, &pservice->subdev_list);
+ 
+ 	/* After the subdev was appened to the list of pservice */
+-	vpu_service_power_off(pservice);
++	//dev_info(dev, "vpu_service_power_off");
++	//vpu_service_power_off(pservice);
+ 
++	dev_info(dev, "vcodec_subdev_probe end");
+ 	return 0;
+ err:
+ 	dev_err(dev, "probe err:%d\n", ret);
+@@ -2288,37 +2325,37 @@ static void vcodec_read_property(struct device_node *np,
+ 						     "video_cabac");
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_a)) {
+-		dev_dbg(pservice->dev, "No aclk reset resource define\n");
++		dev_info(pservice->dev, "No aclk reset resource define\n");
+ 		pservice->rst_a = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_h)) {
+-		dev_dbg(pservice->dev, "No hclk reset resource define\n");
++		dev_info(pservice->dev, "No hclk reset resource define\n");
+ 		pservice->rst_h = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_v)) {
+-		dev_dbg(pservice->dev, "No core rst_v reset resource define\n");
++		dev_info(pservice->dev, "No core rst_v reset resource define\n");
+ 		pservice->rst_v = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_niu_a)) {
+-		dev_dbg(pservice->dev, "No NIU aclk reset resource define\n");
++		dev_info(pservice->dev, "No NIU aclk reset resource define\n");
+ 		pservice->rst_niu_a = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_niu_h)) {
+-		dev_dbg(pservice->dev, "No NIU hclk reset resource define\n");
++		dev_info(pservice->dev, "No NIU hclk reset resource define\n");
+ 		pservice->rst_niu_h = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_core)) {
+-		dev_dbg(pservice->dev, "No core reset resource define\n");
++		dev_info(pservice->dev, "No core reset resource define\n");
+ 		pservice->rst_core = NULL;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(pservice->rst_cabac)) {
+-		dev_dbg(pservice->dev, "No cabac reset resource define\n");
++		dev_info(pservice->dev, "No cabac reset resource define\n");
+ 		pservice->rst_cabac = NULL;
+ 	}
+ #endif

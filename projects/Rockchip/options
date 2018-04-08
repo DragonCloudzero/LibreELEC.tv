@@ -75,6 +75,7 @@
   # Start boot partition at 16MiB, same as https://github.com/rockchip-linux/build images
     SYSTEM_PART_START=32768
 
+  if [ "$LINUX" != "rockchip-4.16" ]; then
   # build and install driver addons (yes / no)
     DRIVER_ADDONS_SUPPORT="yes"
 
@@ -82,3 +83,4 @@
   # for a list of additinoal drivers see packages/linux-driver-addons
   # Space separated list is supported,
     DRIVER_ADDONS="crazycat hauppauge"
+  fi

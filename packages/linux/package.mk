@@ -55,10 +55,9 @@ case "$LINUX" in
     PKG_SOURCE_DIR="kernel-$PKG_VERSION"
     ;;
   rockchip-4.16)
-    PKG_VERSION="4.16-rc5"
-    PKG_SHA256="7f4c6ba202ea5b065357b401e1202e9d60c4ec91a208fb3a42903ba33306ca79"
-    PKG_URL="https://git.kernel.org/torvalds/t/$PKG_NAME-$PKG_VERSION.tar.gz"
-    PKG_PATCH_DIRS="rockchip-4.16"
+    PKG_VERSION="4.16.1"
+    PKG_SHA256="5ba1c270ca6bc7927ad5f4698e0d61e558cce1a62249156a7aa44a6b4e0060c3"
+    PKG_URL="https://www.kernel.org/pub/linux/kernel/v4.x/$PKG_NAME-$PKG_VERSION.tar.xz"
     ;;
   raspberrypi)
     PKG_VERSION="81dda1af754c3af667944af7156bf1c5cdf9beee" # 4.14.30

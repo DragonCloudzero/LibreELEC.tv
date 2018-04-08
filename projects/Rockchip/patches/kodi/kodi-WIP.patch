@@ -1,8 +1,30 @@
+diff --git a/xbmc/cores/AudioEngine/Sinks/AESinkALSA.cpp b/xbmc/cores/AudioEngine/Sinks/AESinkALSA.cpp
+index a9fba1ab1f..92dc0304f3 100644
+--- a/xbmc/cores/AudioEngine/Sinks/AESinkALSA.cpp
++++ b/xbmc/cores/AudioEngine/Sinks/AESinkALSA.cpp
+@@ -742,6 +742,8 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
+       if (fmt == SND_PCM_FORMAT_UNKNOWN)
+         continue;
+ 
++      CLog::Log(LOGDEBUG, "CAESinkALSA::InitializeHW - testing %s, fmt=%s", CAEUtil::DataFormatToStr(i), snd_pcm_format_name(fmt));
++
+       snd_pcm_hw_params_copy(hw_params, hw_params_copy); // restore from copy
+       if (snd_pcm_hw_params_set_format(m_pcm, hw_params, fmt) < 0)
+       {
+@@ -752,6 +754,8 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
+       int fmtBits = CAEUtil::DataFormatToBits(i);
+       int bits    = snd_pcm_hw_params_get_sbits(hw_params);
+ 
++      CLog::Log(LOGDEBUG, "CAESinkALSA::InitializeHW - %s is valid, fmt=%s fmtBits=%d bits=%d", CAEUtil::DataFormatToStr(i), snd_pcm_format_name(fmt), fmtBits, bits);
++
+       // skip bits check when alsa reports invalid sbits value
+       if (bits > 0 && bits != fmtBits)
+       {
 diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
-index 41ff3397e8..3edc35e4ac 100644
+index 35f1fbb661..3b1d68dca6 100644
 --- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
 +++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
-@@ -250,8 +250,8 @@ bool CDVDVideoCodecDRMPRIME::AddData(const DemuxPacket& packet)
+@@ -254,8 +254,8 @@ bool CDVDVideoCodecDRMPRIME::AddData(const DemuxPacket& packet)
    avpkt.size = packet.iSize;
    avpkt.dts = (packet.dts == DVD_NOPTS_VALUE) ? AV_NOPTS_VALUE : static_cast<int64_t>(packet.dts / DVD_TIME_BASE * AV_TIME_BASE);
    avpkt.pts = (packet.pts == DVD_NOPTS_VALUE) ? AV_NOPTS_VALUE : static_cast<int64_t>(packet.pts / DVD_TIME_BASE * AV_TIME_BASE);
@@ -13,41 +35,6 @@ index 41ff3397e8..3edc35e4ac 100644
  
    int ret = avcodec_send_packet(m_pCodecContext, &avpkt);
    if (ret == AVERROR(EAGAIN))
-diff --git a/xbmc/cores/VideoPlayer/DVDFileInfo.cpp b/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
-index 3a00bb310a..6d3fea5b71 100644
---- a/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
-+++ b/xbmc/cores/VideoPlayer/DVDFileInfo.cpp
-@@ -216,8 +216,8 @@ bool CDVDFileInfo::ExtractThumb(const std::string &strPath,
-       if (pDemuxer->SeekTime(nSeekTo, true))
-       {
-         CDVDVideoCodec::VCReturn iDecoderState = CDVDVideoCodec::VC_NONE;
--        VideoPicture picture = {};
--
-+        VideoPicture picture;
-+        picture.Reset();
-         // num streams * 160 frames, should get a valid frame, if not abort.
-         int abort_index = pDemuxer->GetNrOfStreams() * 160;
-         do
-@@ -240,6 +240,7 @@ bool CDVDFileInfo::ExtractThumb(const std::string &strPath,
-           iDecoderState = CDVDVideoCodec::VC_NONE;
-           while (iDecoderState == CDVDVideoCodec::VC_NONE)
-           {
-+            picture.Reset();
-             iDecoderState = pVideoCodec->GetPicture(&picture);
-           }
- 
-diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
-index b547d17cb2..b8a7797ba0 100644
---- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
-+++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
-@@ -317,6 +317,7 @@ void CVideoPlayerVideo::Process()
-   int iDropDirective;
-   bool onlyPrioMsgs = false;
- 
-+  m_picture.Reset();
-   m_videoStats.Start();
-   m_droppingStats.Reset();
-   m_iDroppedFrames = 0;
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
 index cb46cbb9d9..ba5c665bd1 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
@@ -60,6 +47,105 @@ index cb46cbb9d9..ba5c665bd1 100644
    Reset();
  }
  
+diff --git a/xbmc/utils/EGLUtils.cpp b/xbmc/utils/EGLUtils.cpp
+index 723f7e9232..cffd659c6d 100644
+--- a/xbmc/utils/EGLUtils.cpp
++++ b/xbmc/utils/EGLUtils.cpp
+@@ -79,6 +79,8 @@ bool CEGLContextUtils::CreateDisplay(EGLDisplay display,
+                                      EGLint renderable_type,
+                                      EGLint rendering_api)
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
+   EGLint neglconfigs = 0;
+   int major, minor;
+ 
+@@ -153,6 +155,8 @@ bool CEGLContextUtils::CreateDisplay(EGLDisplay display,
+ 
+ bool CEGLContextUtils::CreateContext(const EGLint* contextAttribs)
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
+   if (m_eglContext == EGL_NO_CONTEXT)
+   {
+     m_eglContext = eglCreateContext(m_eglDisplay, m_eglConfig,
+@@ -170,6 +174,8 @@ bool CEGLContextUtils::CreateContext(const EGLint* contextAttribs)
+ 
+ bool CEGLContextUtils::BindContext()
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
+   if (!eglMakeCurrent(m_eglDisplay, m_eglSurface,
+                       m_eglSurface, m_eglContext))
+   {
+@@ -183,11 +189,13 @@ bool CEGLContextUtils::BindContext()
+ 
+ bool CEGLContextUtils::SurfaceAttrib()
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
+   // for the non-trivial dirty region modes, we need the EGL buffer to be preserved across updates
+   if (g_advancedSettings.m_guiAlgorithmDirtyRegions == DIRTYREGION_SOLVER_COST_REDUCTION ||
+       g_advancedSettings.m_guiAlgorithmDirtyRegions == DIRTYREGION_SOLVER_UNION)
+   {
+-    if ((m_eglDisplay == EGL_NO_DISPLAY) || (m_eglSurface == EGL_NO_SURFACE))
++    if (m_eglSurface == EGL_NO_SURFACE || m_eglDisplay == EGL_NO_DISPLAY)
+     {
+       return false;
+     }
+@@ -203,6 +211,8 @@ bool CEGLContextUtils::SurfaceAttrib()
+ 
+ bool CEGLContextUtils::CreateSurface(EGLNativeWindowType surface)
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
+   m_eglSurface = eglCreateWindowSurface(m_eglDisplay,
+                                         m_eglConfig,
+                                         surface,
+@@ -219,19 +229,16 @@ bool CEGLContextUtils::CreateSurface(EGLNativeWindowType surface)
+ 
+ void CEGLContextUtils::Destroy()
+ {
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
++  Detach();
++
+   if (m_eglContext != EGL_NO_CONTEXT)
+   {
+     eglDestroyContext(m_eglDisplay, m_eglContext);
+-    eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+     m_eglContext = EGL_NO_CONTEXT;
+   }
+ 
+-  if (m_eglSurface != EGL_NO_SURFACE)
+-  {
+-    eglDestroySurface(m_eglDisplay, m_eglSurface);
+-    m_eglSurface = EGL_NO_SURFACE;
+-  }
+-
+   if (m_eglDisplay != EGL_NO_DISPLAY)
+   {
+     eglTerminate(m_eglDisplay);
+@@ -241,7 +248,9 @@ void CEGLContextUtils::Destroy()
+ 
+ void CEGLContextUtils::Detach()
+ {
+-  if (m_eglContext != EGL_NO_CONTEXT)
++  CLog::Log(LOGINFO, "CEGLContextUtils::%s - eglDisplay=%p eglSurface=%p eglContext=%p", __FUNCTION__, m_eglDisplay, m_eglSurface, m_eglContext);
++
++  if (eglGetCurrentContext() != EGL_NO_CONTEXT)
+   {
+     eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+   }
+@@ -265,7 +274,7 @@ bool CEGLContextUtils::SetVSync(bool enable)
+ 
+ void CEGLContextUtils::SwapBuffers()
+ {
+-  if (m_eglDisplay == EGL_NO_DISPLAY || m_eglSurface == EGL_NO_SURFACE)
++  if (m_eglSurface == EGL_NO_SURFACE || m_eglDisplay == EGL_NO_DISPLAY)
+   {
+     return;
+   }
 diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
 index 4361faccae..cb0dd06098 100644
 --- a/xbmc/windowing/gbm/DRMAtomic.cpp
