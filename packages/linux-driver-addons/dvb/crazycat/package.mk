@@ -17,8 +17,8 @@
 ################################################################################
 
 PKG_NAME="crazycat"
-PKG_VERSION="2017-12-06"
-PKG_SHA256="779c7d42e5fd4dfac8f53654ce8af467d22a81b6c0b21e24f14aaaed033c6eb1"
+PKG_VERSION="2018-04-12"
+PKG_SHA256="24a5b4c103fb02d7b37a831c3059b1041d4213d0212e30db0e115f6913bcf7e5"
 PKG_ARCH="any"
 PKG_LICENSE="GPL"
 PKG_SITE="https://github.com/crazycat69/linux_media"
@@ -64,6 +64,7 @@ make_target() {
   if [ $LINUX = "amlogic-3.14" -o $LINUX = "amlogic-3.10" ]; then
     sed -e 's/CONFIG_VIDEO_TVP5150=m/# CONFIG_VIDEO_TVP5150 is not set/g' -i v4l/.config
     sed -e 's/CONFIG_DVB_LGDT3306A=m/# CONFIG_DVB_LGDT3306A is not set/g' -i v4l/.config
+    sed -e 's/CONFIG_DVB_AF9013=m/# CONFIG_DVB_LGDT3306A is not set/g' -i v4l/.config
     if [ $LINUX = "amlogic-3.10" ]; then
       sed -e 's/CONFIG_IR_NUVOTON=m/# CONFIG_IR_NUVOTON is not set/g' -i v4l/.config
     fi
