@@ -39,6 +39,8 @@ if [ $LINUX = "amlogic-3.10" ]; then
   PKG_PATCH_DIRS="amlogic-3.10"
 elif [ $LINUX = "amlogic-3.14" ]; then
   PKG_PATCH_DIRS="amlogic-3.14"
+elif [ $LINUX = "rockchip-4.4" ]; then
+  PKG_PATCH_DIRS="rockchip"
 fi
 
 pre_make_target() {
@@ -64,12 +66,13 @@ make_target() {
   if [ $LINUX = "amlogic-3.14" -o $LINUX = "amlogic-3.10" ]; then
     sed -e 's/CONFIG_VIDEO_TVP5150=m/# CONFIG_VIDEO_TVP5150 is not set/g' -i v4l/.config
     sed -e 's/CONFIG_DVB_LGDT3306A=m/# CONFIG_DVB_LGDT3306A is not set/g' -i v4l/.config
-    sed -e 's/CONFIG_DVB_AF9013=m/# CONFIG_DVB_LGDT3306A is not set/g' -i v4l/.config
+    sed -e 's/CONFIG_DVB_AF9013=m/# CONFIG_DVB_AF9013 is not set/g' -i v4l/.config
     if [ $LINUX = "amlogic-3.10" ]; then
       sed -e 's/CONFIG_IR_NUVOTON=m/# CONFIG_IR_NUVOTON is not set/g' -i v4l/.config
     fi
   elif [ "$PROJECT" = Rockchip ]; then
     sed -e 's/CONFIG_DVB_LGDT3306A=m/# CONFIG_DVB_LGDT3306A is not set/g' -i v4l/.config
+    sed -e 's/CONFIG_DVB_AF9013=m/# CONFIG_DVB_AF9013 is not set/g' -i v4l/.config
   fi
 
   # add menuconfig to edit .config
