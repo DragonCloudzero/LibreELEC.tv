@@ -38,6 +38,8 @@ PKG_ADDON_VERSION="${ADDON_VERSION}.${PKG_REV}"
 
 if [ $LINUX = "amlogic-3.14" -o $LINUX = "amlogic-3.10" ]; then
   PKG_PATCH_DIRS="amlogic"
+elif [ $LINUX = "rockchip-4.4" ]; then
+  PKG_PATCH_DIRS="rockchip"
 fi
 
 pre_make_target() {
