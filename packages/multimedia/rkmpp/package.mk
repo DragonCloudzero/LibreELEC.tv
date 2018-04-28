@@ -17,8 +17,8 @@
 ################################################################################
 
 PKG_NAME="rkmpp"
-PKG_VERSION="c8a41a6"
-PKG_SHA256="01b84eecde7cae98035ecce866b48f903f9deaa7e19b048ff9cb87edf6446659"
+PKG_VERSION="7716b36"
+PKG_SHA256="94f4f72119bf6c797da00b463e701c045c72566ef2e43d0bf8c2d16fc2a81a57"
 PKG_ARCH="arm aarch64"
 PKG_LICENSE="APL"
 PKG_SITE="https://github.com/rockchip-linux/mpp"
