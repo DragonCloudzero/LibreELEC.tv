@@ -1,0 +1,145 @@
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+index 4d27465929..88791956fb 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+@@ -43,10 +43,12 @@ CVideoBufferDRMPRIME::CVideoBufferDRMPRIME(IVideoBufferPool& pool, int id)
+   : CVideoBuffer(id)
+ {
+   m_pFrame = av_frame_alloc();
++  CLog::Log(LOGNOTICE, "CVideoBufferDRMPRIME::%s - id=%d refCount=%d", __FUNCTION__, id, m_refCount);
+ }
+ 
+ CVideoBufferDRMPRIME::~CVideoBufferDRMPRIME()
+ {
++  CLog::Log(LOGNOTICE, "CVideoBufferDRMPRIME::%s - id=%d refCount=%d", __FUNCTION__, m_id, m_refCount);
+   Unref();
+   av_frame_free(&m_pFrame);
+ }
+@@ -96,6 +98,7 @@ protected:
+ 
+ CVideoBufferPoolDRMPRIME::~CVideoBufferPoolDRMPRIME()
+ {
++  CLog::Log(LOGNOTICE, "CVideoBufferPoolDRMPRIME::%s", __FUNCTION__);
+   for (auto buf : m_all)
+     delete buf;
+ }
+@@ -150,12 +153,14 @@ void CVideoBufferPoolDRMPRIME::Return(int id)
+ CDVDVideoCodecDRMPRIME::CDVDVideoCodecDRMPRIME(CProcessInfo& processInfo)
+   : CDVDVideoCodec(processInfo)
+ {
++  CLog::Log(LOGNOTICE, "CDVDVideoCodecDRMPRIME::%s", __FUNCTION__);
+   m_pFrame = av_frame_alloc();
+   m_videoBufferPool = std::make_shared<CVideoBufferPoolDRMPRIME>();
+ }
+ 
+ CDVDVideoCodecDRMPRIME::~CDVDVideoCodecDRMPRIME()
+ {
++  CLog::Log(LOGNOTICE, "CDVDVideoCodecDRMPRIME::%s", __FUNCTION__);
+   av_frame_free(&m_pFrame);
+   avcodec_free_context(&m_pCodecContext);
+ }
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
+index 44ec0014e3..918ea0e002 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
+@@ -67,7 +67,7 @@ public:
+   void Reset() override;
+   CDVDVideoCodec::VCReturn GetPicture(VideoPicture* pVideoPicture) override;
+   const char* GetName() override { return m_name.c_str(); };
+-  unsigned GetAllowedReferences() override { return 4; };
++  unsigned GetAllowedReferences() override { return 5; };
+   void SetCodecControl(int flags) override { m_codecControlFlags = flags; };
+ 
+ protected:
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+index d43687b895..ef36027607 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+@@ -33,12 +33,15 @@ static CWinSystemGbmGLESContext *m_pWinSystem;
+ CRendererDRMPRIME::CRendererDRMPRIME(std::shared_ptr<CDRMUtils> drm)
+   : m_DRM(drm)
+ {
++  CLog::Log(LOGNOTICE, "CRendererDRMPRIME::%s", __FUNCTION__);
+ }
+ 
+ CRendererDRMPRIME::~CRendererDRMPRIME()
+ {
++  CLog::Log(LOGNOTICE, "CRendererDRMPRIME::%s - start", __FUNCTION__);
+   m_DRM->DisableVideoLayer();
+   Reset();
++  CLog::Log(LOGNOTICE, "CRendererDRMPRIME::%s - end", __FUNCTION__);
+ }
+ 
+ CBaseRenderer* CRendererDRMPRIME::Create(CVideoBuffer* buffer)
+@@ -77,6 +80,8 @@ bool CRendererDRMPRIME::Configure(const VideoPicture& picture, float fps, unsign
+   Reset();
+ 
+   m_bConfigured = true;
++
++  CServiceBroker::GetWinSystem()->GetGfxContext().SetFullScreenVideo(true);
+   return true;
+ }
+ 
+@@ -101,6 +106,7 @@ void CRendererDRMPRIME::AddVideoPicture(const VideoPicture& picture, int index,
+ 
+ void CRendererDRMPRIME::Reset()
+ {
++  CLog::Log(LOGNOTICE, "CRendererDRMPRIME::%s - lastRenderBuffer=%d", __FUNCTION__, m_iLastRenderBuffer);
+   for (int i = 0; i < m_numRenderBuffers; i++)
+     ReleaseBuffer(i);
+ 
+@@ -109,6 +115,7 @@ void CRendererDRMPRIME::Reset()
+ 
+ void CRendererDRMPRIME::Flush()
+ {
++  CLog::Log(LOGNOTICE, "CRendererDRMPRIME::%s - lastRenderBuffer=%d", __FUNCTION__, m_iLastRenderBuffer);
+   m_iLastRenderBuffer = -1;
+ }
+ 
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
+index d34f91ede7..85f3c4474d 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
+@@ -64,13 +64,12 @@ private:
+ 
+   bool m_bConfigured = false;
+   int m_iLastRenderBuffer = -1;
+-  static const int m_numRenderBuffers = 4;
++  static const int m_numRenderBuffers = NUM_BUFFERS;
+ 
+   std::shared_ptr<CDRMUtils> m_DRM;
+ 
+   struct BUFFER
+   {
+-    BUFFER() : videoBuffer(nullptr) {};
+-    CVideoBuffer* videoBuffer;
++    CVideoBuffer* videoBuffer = nullptr;
+   } m_buffers[m_numRenderBuffers];
+ };
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+index 3e1de80d1f..802d85f16d 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+@@ -304,6 +304,9 @@ void CRenderManager::FrameMove()
+       if (!Configure())
+         return;
+ 
++      if (m_renderState == STATE_CONFIGURED)
++        UpdateResolution();
++
+       firstFrame = true;
+       FrameWait(50);
+     }
+diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
+index fff6e90873..0863d9b85a 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.cpp
++++ b/xbmc/windowing/gbm/DRMAtomic.cpp
+@@ -39,6 +39,8 @@ void CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered, bool video
+ 
+   if (flags & DRM_MODE_ATOMIC_ALLOW_MODESET)
+   {
++    CLog::Log(LOGNOTICE, "CDRMAtomic::%s - modeset", __FUNCTION__);
++
+     if (!AddProperty(m_req, m_connector, "CRTC_ID", m_crtc->crtc->crtc_id))
+     {
+       return;
